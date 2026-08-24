@@ -4,6 +4,8 @@ cd "$(dirname "$0")"
 
 echo "=== Westside Stories 1.0 — Build macOS App ==="
 echo
+echo "Production pipeline: Whisper → Doré proofreader → SRT → optional burn-in"
+echo
 
 if [ -x "/opt/homebrew/bin/python3" ]; then
   PY="/opt/homebrew/bin/python3"
@@ -38,7 +40,8 @@ rm -rf build dist "Westside Stories.spec"
   --onedir \
   --name "Westside Stories" \
   --add-data "app/assets:assets" \
-  "app/main.py"
+  --paths "app" \
+  "app/main_dore.py"
 
 echo
 echo "完成："
