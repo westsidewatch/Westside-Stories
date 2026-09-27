@@ -68,12 +68,20 @@ def _transcribe_production(self, vpy: str, result_json: Path):
     """Chinese uses contextual Paraformer in production; Whisper is fallback only."""
     if self.language in ("zh", "auto"):
         try:
-            from dore_subtitle.context_retriever import retrieve_context
+            from asr.church_context import load_context_terms
+            from dore_subtitle.context_retriever import CorpusTerm, retrieve_context
             from dore_subtitle.contextual_paraformer import transcribe_challenger
 
             scope = _active_memory_scope()
             memory_path = Path.home() / "Library" / "Application Support" / "Westside Stories" / "subtitle-memory.json"
-            context = retrieve_context(scope=scope, memory_path=memory_path, query="")
+            corpus = [CorpusTerm(text=term, evidence="bible/church corpus", weight=1.0) for term in load_context_terms(APP_HOME)]
+            context = retrieve_context(
+                scope=scope,
+                memory_path=memory_path,
+                corpus_terms=corpus,
+                query=os.environ.get("WESTSIDE_SERMON_CONTEXT", "").strip(),
+                limit=64,
+            )
             asr_python = _ensure_contextual_asr_env(self)
             if asr_python:
                 self.status.emit("正在進行中文語境辨識…", "Running contextual Chinese ASR…")
@@ -86,8 +94,9 @@ def _transcribe_production(self, vpy: str, result_json: Path):
                         "text": result.text,
                         "segments": segments,
                         "backend": "funasr-paraformer-zh-contextual",
+                        "context_terms": len(context),
                     }, ensure_ascii=False), encoding="utf-8")
-                    log(f"production contextual ASR completed; segments={len(segments)} chars={len(result.text)} context={len(context)}")
+                    log(f"production contextual ASR completed; segments={len(segments)} chars={len(result.text)} context={len(context)} corpus={len(corpus)}")
                     return
                 log("production contextual ASR unavailable; falling back to Whisper: " + (result.error or "no timestamped segments"))
         except Exception as exc:
