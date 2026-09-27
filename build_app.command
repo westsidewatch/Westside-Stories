@@ -38,6 +38,10 @@ echo "執行中文教會語境 release gate..."
 PYTHONPATH="app" "$VPY" tests/test_church_language_release_gate.py
 
 echo
+echo "執行 Doré 輸出安全 gate..."
+PYTHONPATH="app" "$VPY" tests/test_dore_output_contract.py
+
+echo
 echo "開始打包..."
 rm -rf build dist "Westside Stories.spec"
 
