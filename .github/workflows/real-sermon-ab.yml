@@ -1,0 +1,33 @@
+name: Real Sermon ASR A-B
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/real-sermon-ab.yml'
+
+jobs:
+  benchmark:
+    runs-on: macos-14
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        video_id:
+          - Z0L3jXp7h-U
+          - 9T_2gYcG7Gg
+          - xVJE8jE2qdI
+          - GbRvBsDz-J4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run blind real-sermon A/B
+        run: |
+          chmod +x tools/benchmark_youtube.command
+          ./tools/benchmark_youtube.command "https://youtu.be/${{ matrix.video_id }}"
+      - name: Upload A/B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sermon-ab-${{ matrix.video_id }}
+          path: .benchmark-real/${{ matrix.video_id }}/
+          if-no-files-found: warn
