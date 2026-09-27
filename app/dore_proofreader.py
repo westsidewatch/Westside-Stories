@@ -1,7 +1,7 @@
 """Doré subtitle proofreader client for Westside Stories.
 
-Conservative by design: Doré may normalize high-confidence biblical terminology,
-but it never rewrites uncertain subtitle language.
+The proofreader receives local Chinese church/Bible domain context and may make
+high-confidence local corrections while preserving SRT structure and wording.
 """
 from __future__ import annotations
 import json
@@ -9,13 +9,37 @@ import os
 import urllib.request
 from typing import Iterable
 
+from church_language_context import context_payload
+
 DEFAULT_ENDPOINT = "https://westsidewatch.ca/api/dore/subtitle-proofread"
 
 
 def proofread_segments(segments: Iterable[dict], endpoint: str | None = None, timeout: int = 30) -> dict:
     url = endpoint or os.environ.get("DORE_PROOFREADER_URL", DEFAULT_ENDPOINT)
-    payload = json.dumps({"segments": list(segments)}, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, method="POST", headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "Westside-Stories/Dore-Worker"})
+    payload = json.dumps(
+        {
+            "segments": list(segments),
+            "context": context_payload(),
+            "policy": {
+                "apply_high_confidence": True,
+                "minimal_local_edits_only": True,
+                "preserve_timestamps": True,
+                "preserve_spoken_wording": True,
+                "no_style_rewrite": True,
+            },
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Westside-Stories/Dore-Worker",
+        },
+    )
     with urllib.request.urlopen(req, timeout=timeout) as response:
         data = json.loads(response.read().decode("utf-8"))
     if not data.get("ok") or data.get("schema") != "dore.subtitle-proofread.v1":
@@ -40,7 +64,7 @@ def apply_dore_to_srt_text(srt_text: str, endpoint: str | None = None) -> tuple[
     by_id = {int(item["id"]): item for item in result["results"]}
     for i in line_ids:
         item = by_id.get(i)
-        if item and item.get("changed"):
+        if item and item.get("changed") and item.get("corrected"):
             lines[i] = item["corrected"]
     suffix = "\n" if srt_text.endswith("\n") else ""
     return "\n".join(lines) + suffix, result.get("summary", {})
