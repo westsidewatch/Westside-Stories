@@ -58,6 +58,20 @@ def _ensure_contextual_asr_env(self) -> str | None:
         return None
 
 
+def _challenger_audio_path(self) -> Path:
+    """Use the same extracted WAV produced by the stable pipeline when available."""
+    audio = getattr(self, "audio", None)
+    if audio:
+        candidate = Path(audio)
+        if candidate.exists():
+            return candidate
+    for name in ("audio.wav", "extracted_audio.wav", "input.wav"):
+        candidate = APP_HOME / name
+        if candidate.exists():
+            return candidate
+    return self.video
+
+
 def _transcribe_with_contextual_challenger(self, vpy: str, result_json: Path):
     """Run contextual Chinese ASR sequentially, archive evidence, then run Whisper."""
     if self.language in ("zh", "auto"):
@@ -72,7 +86,8 @@ def _transcribe_with_contextual_challenger(self, vpy: str, result_json: Path):
             if challenger_python:
                 self.status.emit("正在進行中文語境辨識…", "Running contextual Chinese ASR…")
                 self.progress.emit(24)
-                challenger = transcribe_challenger(challenger_python, self.video, context=context)
+                challenger_input = _challenger_audio_path(self)
+                challenger = transcribe_challenger(challenger_python, challenger_input, context=context)
                 evidence_dir = APP_HOME / "dore"
                 evidence_dir.mkdir(parents=True, exist_ok=True)
                 evidence_path = evidence_dir / "last_result.contextual-asr.json"
@@ -80,16 +95,16 @@ def _transcribe_with_contextual_challenger(self, vpy: str, result_json: Path):
                     "ok": challenger.ok,
                     "text": challenger.text,
                     "error": challenger.error,
+                    "input": str(challenger_input),
                     "context": [{"text": item.text, "score": item.score, "source": item.source} for item in context],
                 }, ensure_ascii=False, indent=2), encoding="utf-8")
                 if challenger.ok:
-                    log(f"contextual ASR challenger completed; chars={len(challenger.text)} context={len(context)}")
+                    log(f"contextual ASR challenger completed; chars={len(challenger.text)} context={len(context)} input={challenger_input}")
                 else:
                     log("contextual ASR challenger failed; Whisper remains production: " + challenger.error)
         except Exception as exc:
             log(f"contextual ASR challenger isolated failure: {type(exc).__name__}: {exc}")
 
-    # Production remains the stable Whisper result until real-audio A/B promotion.
     _original_transcribe(self, vpy, result_json)
 
 
