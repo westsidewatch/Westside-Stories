@@ -61,7 +61,20 @@ def _transcribe_production(self, vpy: str, result_json: Path):
     result_json.write_text(json.dumps({"text": result.text, "segments": segments, "backend": "funasr-paraformer-zh-contextual", "resolved_model": backend, "context_terms": len(context), "hotword_terms": result.raw.get("hotword_terms", 0)}, ensure_ascii=False), encoding="utf-8")
     log(f"CONTEXTUAL ASR CONFIRMED: resolved_model={backend}; segments={len(segments)} chars={len(result.text)} context={len(context)} hotwords={result.raw.get('hotword_terms', 0)}")
 
-def _write_srt_production(self, result_json, srt_path): _original_write_srt(self, result_json, srt_path)
+def _write_srt_production(self, result_json, srt_path):
+    _original_write_srt(self, result_json, srt_path)
+    # Fast local correction is deliberately downstream of ASR: no second decode,
+    # no network, and timestamps remain byte-for-byte untouched.
+    try:
+        from church_corrector import apply_to_srt_text
+        original = Path(srt_path).read_text(encoding="utf-8")
+        corrected, summary = apply_to_srt_text(original)
+        Path(srt_path).write_text(corrected, encoding="utf-8")
+        log(f"CHURCH CORRECTOR: changed_lines={summary['changed_lines']} corrections={summary['corrections']}")
+    except Exception as exc:
+        # Explicit corrections have no optional dependency; fuzzy correction can
+        # degrade gracefully if optional packages are absent.
+        log(f"church corrector unavailable: {type(exc).__name__}: {exc}")
 
 def _probe_video_size(ffmpeg: str, video: Path):
     ffprobe = str(Path(ffmpeg).with_name("ffprobe"))
