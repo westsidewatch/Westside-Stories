@@ -1,0 +1,28 @@
+name: macOS App Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Westside Stories
+        run: |
+          chmod +x build_app.command
+          NO_OPEN=1 ./build_app.command
+      - name: Verify app bundle
+        run: |
+          test -d "dist/Westside Stories.app"
+          test -f "dist/Westside Stories.app/Contents/MacOS/Westside Stories"
+      - name: Package app
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/Westside Stories.app" "Westside-Stories-macOS.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Westside-Stories-macOS
+          path: Westside-Stories-macOS.zip
+          if-no-files-found: error
