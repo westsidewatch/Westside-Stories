@@ -3,7 +3,19 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from dore_subtitle.local_context_adapter import build_local_context
-from dore_subtitle.local_memory import MemoryScope, confirm_term
+from dore_subtitle.local_memory import MemoryScope, confirm, load_memory, save_memory
+
+
+def confirm_term(path: Path, scope: MemoryScope, *, observed: str, confirmed: str, category: str) -> None:
+    terms = load_memory(path)
+    terms = confirm(
+        terms,
+        observed=observed,
+        confirmed=confirmed,
+        category=category,
+        scope=scope,
+    )
+    save_memory(path, terms)
 
 
 def main():
