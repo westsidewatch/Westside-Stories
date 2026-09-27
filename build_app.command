@@ -2,9 +2,9 @@
 set -e
 cd "$(dirname "$0")"
 
-echo "=== Westside Stories 1.0 — Build macOS App ==="
+echo "=== Westside Stories 1.1 — Build macOS App ==="
 echo
-echo "Production pipeline: Whisper → Doré proofreader → SRT → optional burn-in"
+echo "Production pipeline: Local ASR → SRT → Doré shadow evidence → optional burn-in"
 echo
 
 if [ -x "/opt/homebrew/bin/python3" ]; then
@@ -41,7 +41,10 @@ rm -rf build dist "Westside Stories.spec"
   --name "Westside Stories" \
   --add-data "app/assets:assets" \
   --paths "app" \
-  "app/main_dore.py"
+  --hidden-import "dore_subtitle.pipeline_bridge" \
+  --hidden-import "dore_subtitle.shadow_archive" \
+  --hidden-import "dore_subtitle.suspicion_gate" \
+  "app/main_v2.py"
 
 echo
 echo "完成："
