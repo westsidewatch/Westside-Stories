@@ -1,5 +1,5 @@
 {
-  "schema": "westside.subtitle-regression.v1",
+  "schema": "westside.subtitle-regression.v2",
   "cases": [
     {"category":"scripture","input":"今天我們讀以弗所書第一章。","must_keep":["以弗所書"]},
     {"category":"scripture","input":"使徒行傳記載五旬節所發生的事。","must_keep":["使徒行傳","五旬節"]},
@@ -10,6 +10,8 @@
     {"category":"theology","input":"基督是我們的挽回祭，我們來到施恩座前。","must_keep":["基督","挽回祭","施恩座"]},
     {"category":"church","input":"主日之後弟兄姊妹一起查經和團契。","must_keep":["主日","弟兄","姊妹","查經","團契"]},
     {"category":"church","input":"牧師講道之後我們有聖餐和禱告。","must_keep":["牧師","講道","聖餐","禱告"]},
+    {"category":"church","input":"我們今天在西安堂聚會。","expected_local":"我們今天在錫安堂聚會。","must_keep":["錫安堂"]},
+    {"category":"theology","input":"這是神給我們的恩趙。","expected_local":"這是神給我們的恩召。","must_keep":["恩召"]},
     {"category":"ordinary","input":"今天下午可能會下雨，記得帶雨傘。","must_keep":["今天下午可能會下雨，記得帶雨傘。"],"must_not_change":true},
     {"category":"ordinary","input":"這段話只是一般中文，不需要改寫。","must_keep":["這段話只是一般中文，不需要改寫。"],"must_not_change":true}
   ]
