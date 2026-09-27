@@ -1,10 +1,4 @@
-"""Westside Stories 1.1 production entrypoint.
-
-Chinese jobs can run an isolated contextual-ASR challenger before the stable
-Whisper path. The challenger is fail-open and short-lived: it never prevents
-Whisper from producing usable subtitles and its model memory is released when
-the subprocess exits.
-"""
+"""Westside Stories production entrypoint with contextual Chinese ASR v2."""
 from __future__ import annotations
 
 import json
@@ -34,7 +28,6 @@ def _active_memory_scope():
 
 
 def _ensure_contextual_asr_env(self) -> str | None:
-    """Prepare a separate challenger environment; failure leaves Whisper intact."""
     py = stable_main.find_python()
     if not py:
         return None
@@ -58,8 +51,7 @@ def _ensure_contextual_asr_env(self) -> str | None:
         return None
 
 
-def _challenger_audio_path(self) -> Path:
-    """Use the same extracted WAV produced by the stable pipeline when available."""
+def _asr_audio_path(self) -> Path:
     audio = getattr(self, "audio", None)
     if audio:
         candidate = Path(audio)
@@ -72,8 +64,8 @@ def _challenger_audio_path(self) -> Path:
     return self.video
 
 
-def _transcribe_with_contextual_challenger(self, vpy: str, result_json: Path):
-    """Run contextual Chinese ASR sequentially, archive evidence, then run Whisper."""
+def _transcribe_production(self, vpy: str, result_json: Path):
+    """Chinese uses contextual Paraformer in production; Whisper is fallback only."""
     if self.language in ("zh", "auto"):
         try:
             from dore_subtitle.context_retriever import retrieve_context
@@ -82,59 +74,30 @@ def _transcribe_with_contextual_challenger(self, vpy: str, result_json: Path):
             scope = _active_memory_scope()
             memory_path = Path.home() / "Library" / "Application Support" / "Westside Stories" / "subtitle-memory.json"
             context = retrieve_context(scope=scope, memory_path=memory_path, query="")
-            challenger_python = _ensure_contextual_asr_env(self)
-            if challenger_python:
+            asr_python = _ensure_contextual_asr_env(self)
+            if asr_python:
                 self.status.emit("正在進行中文語境辨識…", "Running contextual Chinese ASR…")
-                self.progress.emit(24)
-                challenger_input = _challenger_audio_path(self)
-                challenger = transcribe_challenger(challenger_python, challenger_input, context=context)
-                evidence_dir = APP_HOME / "dore"
-                evidence_dir.mkdir(parents=True, exist_ok=True)
-                evidence_path = evidence_dir / "last_result.contextual-asr.json"
-                evidence_path.write_text(json.dumps({
-                    "ok": challenger.ok,
-                    "text": challenger.text,
-                    "error": challenger.error,
-                    "input": str(challenger_input),
-                    "context": [{"text": item.text, "score": item.score, "source": item.source} for item in context],
-                }, ensure_ascii=False, indent=2), encoding="utf-8")
-                if challenger.ok:
-                    log(f"contextual ASR challenger completed; chars={len(challenger.text)} context={len(context)} input={challenger_input}")
-                else:
-                    log("contextual ASR challenger failed; Whisper remains production: " + challenger.error)
+                self.progress.emit(30)
+                source = _asr_audio_path(self)
+                result = transcribe_challenger(asr_python, source, context=context)
+                segments = result.raw.get("segments") if result.ok else None
+                if result.ok and segments:
+                    result_json.write_text(json.dumps({
+                        "text": result.text,
+                        "segments": segments,
+                        "backend": "funasr-paraformer-zh-contextual",
+                    }, ensure_ascii=False), encoding="utf-8")
+                    log(f"production contextual ASR completed; segments={len(segments)} chars={len(result.text)} context={len(context)}")
+                    return
+                log("production contextual ASR unavailable; falling back to Whisper: " + (result.error or "no timestamped segments"))
         except Exception as exc:
-            log(f"contextual ASR challenger isolated failure: {type(exc).__name__}: {exc}")
+            log(f"production contextual ASR failure; falling back to Whisper: {type(exc).__name__}: {exc}")
 
     _original_transcribe(self, vpy, result_json)
 
 
-def _write_srt_with_proofreading_and_shadow(self, result_json, srt_path):
+def _write_srt_production(self, result_json, srt_path):
     _original_write_srt(self, result_json, srt_path)
-    original_text = srt_path.read_text(encoding="utf-8")
-    original_path = APP_HOME / "dore" / "last_result.whisper-original.srt"
-    try:
-        original_path.parent.mkdir(parents=True, exist_ok=True)
-        original_path.write_text(original_text, encoding="utf-8", newline="\n")
-    except Exception as exc:
-        log(f"original SRT archive skipped: {type(exc).__name__}: {exc}")
-
-    try:
-        from dore_proofreader import apply_dore_to_srt_text
-        corrected, summary = apply_dore_to_srt_text(original_text, scope=_active_memory_scope())
-        srt_path.write_text(corrected, encoding="utf-8", newline="\n")
-        log(f"Doré proofread: segments={summary.get('segments', 0)} changed={summary.get('changed', 0)}")
-    except Exception as exc:
-        log(f"Doré proofread unavailable; kept Whisper SRT: {type(exc).__name__}: {exc}")
-
-    try:
-        from dore_subtitle.pipeline_bridge import run_shadow_pipeline
-        report = run_shadow_pipeline(result_json, APP_HOME)
-        if report.get("ok"):
-            log(f"dore shadow: ok; segments={report.get('segments', 0)}; suspicions={report.get('suspicions', 0)}")
-        else:
-            log("dore shadow: skipped; " + str(report.get("error", "unknown")))
-    except Exception as exc:
-        log(f"dore shadow: isolated failure: {type(exc).__name__}: {exc}")
 
 
 def _probe_video_size(ffmpeg: str, video: Path) -> tuple[int | None, int | None]:
@@ -176,8 +139,8 @@ def _burn_with_style(self, ffmpeg: str, srt: Path, output: Path):
                 pass
 
 
-Worker.transcribe = _transcribe_with_contextual_challenger
-Worker.write_srt = _write_srt_with_proofreading_and_shadow
+Worker.transcribe = _transcribe_production
+Worker.write_srt = _write_srt_production
 Worker.burn = _burn_with_style
 
 
