@@ -17,6 +17,7 @@ VPY="$VENV/bin/python"
 "$VPY" -m pip install --upgrade pip pyinstaller pyside6 pypinyin
 
 PYTHONPATH="app" "$VPY" -c "import main_v2, subtitle_style, asr.church_context, dore_subtitle.dynamic_context, dore_subtitle.context_retriever, dore_subtitle.contextual_paraformer, dore_subtitle.local_memory; print('ASR v2 release imports: ok')"
+PYTHONPATH="app" "$VPY" tests/test_asr_v2_release.py
 
 rm -rf build dist "Westside Stories.spec"
 "$VPY" -m PyInstaller \
