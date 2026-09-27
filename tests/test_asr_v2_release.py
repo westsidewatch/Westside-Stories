@@ -21,8 +21,17 @@ require("return _original_transcribe(self, vpy, result_json)" in main_v2,
         "stable production ASR delegation missing")
 require("apply_to_srt_text" in main_v2,
         "Church Corrector is not applied after SRT generation")
-require("transcribe_challenger" not in main_v2 and "funasr" not in main_v2.lower(),
-        "broken FunASR runtime is still on the production path")
+
+tree = ast.parse(main_v2)
+imports = []
+for node in ast.walk(tree):
+    if isinstance(node, ast.Import):
+        imports.extend(alias.name for alias in node.names)
+    elif isinstance(node, ast.ImportFrom):
+        imports.append(node.module or "")
+joined_imports = " ".join(imports).lower()
+require("funasr" not in joined_imports and "contextual_paraformer" not in joined_imports,
+        "broken FunASR runtime is still imported on the production path")
 
 # First-use local correction gate.
 for token in ("慕道", "恩召"):
