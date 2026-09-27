@@ -3,7 +3,22 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 URL="${1:-https://youtu.be/Z0L3jXp7h-U}"
-VIDEO_ID="$(printf '%s' "$URL" | sed -E 's#.*youtu\.be/([^?&/]+).*#\1#; t; s#.*[?&]v=([^&]+).*#\1#')"
+VIDEO_ID="$(python3 - "$URL" <<'PY'
+import sys
+from urllib.parse import urlparse, parse_qs
+url=sys.argv[1]
+p=urlparse(url)
+if p.netloc in {"youtu.be", "www.youtu.be"}:
+    video_id=p.path.strip("/").split("/")[0]
+elif "youtube.com" in p.netloc:
+    video_id=parse_qs(p.query).get("v", [""])[0]
+else:
+    video_id=url.strip()
+if not video_id:
+    raise SystemExit("Could not parse YouTube video ID")
+print(video_id)
+PY
+)"
 OUT=".benchmark-real/${VIDEO_ID}"
 mkdir -p "$OUT"
 
@@ -27,8 +42,6 @@ from dore_subtitle.local_memory import MemoryScope
 
 audio=Path(sys.argv[1]); out=Path(sys.argv[2]); video_id=sys.argv[3]
 scope=MemoryScope("Living Water West", "", "")
-# Real benchmark: do not inject the expected answer words into the decoder.
-# Context comes only from confirmed local memory/corpus available to production.
 context=retrieve_context(scope=scope, query="中文教會講道")
 base=MLXWhisperAdapter().transcribe(TranscriptionRequest(audio_path=audio, language="zh"))
 base_text=str(base.raw.get("text") or "").strip()
