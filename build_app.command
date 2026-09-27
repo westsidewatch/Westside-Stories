@@ -42,6 +42,10 @@ echo "執行 Doré 輸出安全 gate..."
 PYTHONPATH="app" "$VPY" tests/test_dore_output_contract.py
 
 echo
+echo "執行字幕 regression corpus gate..."
+PYTHONPATH="app" "$VPY" tests/test_regression_corpus.py
+
+echo
 echo "開始打包..."
 rm -rf build dist "Westside Stories.spec"
 
