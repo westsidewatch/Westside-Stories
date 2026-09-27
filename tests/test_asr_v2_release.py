@@ -10,39 +10,30 @@ def require(condition, message):
 
 
 main_v2 = (ROOT / "app" / "main_v2.py").read_text(encoding="utf-8")
-adapter = (ROOT / "app" / "asr" / "funasr_paraformer_adapter.py").read_text(encoding="utf-8")
-context = (ROOT / "app" / "asr" / "church_context.py").read_text(encoding="utf-8")
 build = (ROOT / "build_app.command").read_text(encoding="utf-8")
+corrector = (ROOT / "app" / "church_corrector.py").read_text(encoding="utf-8")
 
-# Syntax gate.
-for name, source in (("main_v2", main_v2), ("adapter", adapter), ("context", context)):
+for name, source in (("main_v2", main_v2), ("corrector", corrector)):
     ast.parse(source, filename=name)
 
-# Production routing gate: non-Chinese delegates to stable ASR; Chinese/auto continues
-# through contextual Paraformer. Test behavior rather than brittle quote formatting.
-require("self.language not in" in main_v2 and '"zh"' in main_v2 and '"auto"' in main_v2,
-        "Chinese/auto production routing missing")
-require("transcribe_challenger" in main_v2, "contextual Paraformer not called by production")
-require("result_json.write_text" in main_v2 and '"segments": segments' in main_v2, "Paraformer segments do not reach production result")
-require("_original_transcribe(self, vpy, result_json)" in main_v2, "non-Chinese stable ASR delegation missing")
+# Production must use the already-working recognizer, then correct text locally.
+require("return _original_transcribe(self, vpy, result_json)" in main_v2,
+        "stable production ASR delegation missing")
+require("apply_to_srt_text" in main_v2,
+        "Church Corrector is not applied after SRT generation")
+require("transcribe_challenger" not in main_v2 and "funasr" not in main_v2.lower(),
+        "broken FunASR runtime is still on the production path")
 
-# Mature upstream stack gate.
-for token in ('model="paraformer-zh"', 'vad_model="fsmn-vad"', 'punc_model="ct-punc"'):
-    require(token in adapter, f"missing upstream component: {token}")
-require('kwargs["hotword"] = hotword' in adapter, "context is not passed into upstream recognition")
+# First-use local correction gate.
+for token in ("慕道", "恩召"):
+    require(token in corrector, f"missing shipped church correction target: {token}")
+require("load_terms" in corrector and "rapidfuzz" in corrector and "pypinyin" in corrector,
+        "local glossary/fuzzy correction stack missing")
 
-# Expandable corpus gate.
-require('glob("*.txt")' in context, "expandable context corpus discovery missing")
-require("load_context_terms" in main_v2, "production does not load context corpus")
-require("corpus_terms=corpus" in main_v2, "corpus does not reach context retrieval")
-
-# Church Corrector release gate.
+# Packaging gate.
+require("Westside Stories 1.2" in build, "build is not marked 1.2")
 require("church_corrector" in build, "Church Corrector is not packaged")
 require("test_church_corrector.py" in build, "Church Corrector first-use gate is not run")
 require("rapidfuzz" in build and "pypinyin" in build, "Church Corrector fuzzy dependencies are not installed")
 
-# Packaging gate.
-require("Westside Stories 1.2" in build, "build is not marked 1.2")
-require('asr.church_context' in build, "ASR v2 context module is not packaged")
-
-print("ASR v2 release gate: PASS")
+print("ASR + Church Corrector release gate: PASS")
