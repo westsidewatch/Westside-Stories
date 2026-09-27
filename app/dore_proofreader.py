@@ -7,7 +7,8 @@ import urllib.request
 from typing import Iterable
 
 from church_language_context import context_payload
-from dore_subtitle.domain_recovery import recover_domain_text
+from dore_subtitle.ambiguity_resolver import as_payload, build_ambiguity_evidence
+from dore_subtitle.context_retriever import retrieve_context
 from dore_subtitle.local_context_adapter import build_local_context
 from dore_subtitle.local_memory import MemoryScope
 
@@ -18,17 +19,28 @@ DEFAULT_MEMORY = Path.home() / "Library" / "Application Support" / "Westside Sto
 def proofread_segments(segments: Iterable[dict], endpoint: str | None = None, timeout: int = 30, scope: MemoryScope | None = None) -> dict:
     url = endpoint or os.environ.get("DORE_PROOFREADER_URL", DEFAULT_ENDPOINT)
     active_scope = scope or MemoryScope()
+    material = list(segments)
     local_context = build_local_context(DEFAULT_MEMORY, active_scope)
+    dynamic_context = retrieve_context(scope=active_scope, memory_path=DEFAULT_MEMORY, query=" ".join(str(item.get("text") or "") for item in material))
+    observed_spans = [str(item.get("text") or "").strip() for item in material if str(item.get("text") or "").strip()]
+    ambiguity = build_ambiguity_evidence(observed_spans, dynamic_context)
     payload = json.dumps({
-        "segments": list(segments),
+        "segments": material,
         "context": context_payload(),
         "local_context": local_context,
+        "dynamic_context": [
+            {"text": item.text, "score": item.score, "source": item.source}
+            for item in dynamic_context
+        ],
+        "ambiguity_evidence": as_payload(ambiguity),
         "policy": {
             "apply_high_confidence": True,
             "minimal_local_edits_only": True,
             "preserve_timestamps": True,
             "preserve_spoken_wording": True,
             "no_style_rewrite": True,
+            "no_static_replacement_rules": True,
+            "ambiguity_requires_contextual_evidence": True,
         },
     }, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(url, data=payload, method="POST", headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "Westside-Stories/Dore-Worker"})
@@ -40,23 +52,18 @@ def proofread_segments(segments: Iterable[dict], endpoint: str | None = None, ti
 
 
 def apply_dore_to_srt_text(srt_text: str, endpoint: str | None = None, scope: MemoryScope | None = None) -> tuple[str, dict]:
-    """Recover local domain terms, then proofread while preserving SRT timing."""
+    """Proofread while preserving SRT timing; no local replacement table is applied."""
     lines = srt_text.splitlines()
     candidates = []
     line_ids = []
-    local_changed = 0
     for i, line in enumerate(lines):
         stripped = line.strip()
         if not stripped or stripped.isdigit() or "-->" in line:
             continue
-        recovered, changes = recover_domain_text(line)
-        if changes:
-            lines[i] = recovered
-            local_changed += len(changes)
         line_ids.append(i)
-        candidates.append({"id": i, "text": lines[i]})
+        candidates.append({"id": i, "text": line})
     if not candidates:
-        return srt_text, {"segments": 0, "changed": 0, "local_domain_changed": 0}
+        return srt_text, {"segments": 0, "changed": 0}
     result = proofread_segments(candidates, endpoint=endpoint, scope=scope)
     by_id = {int(item["id"]): item for item in result["results"]}
     for i in line_ids:
@@ -64,6 +71,4 @@ def apply_dore_to_srt_text(srt_text: str, endpoint: str | None = None, scope: Me
         if item and item.get("changed") and item.get("corrected"):
             lines[i] = item["corrected"]
     suffix = "\n" if srt_text.endswith("\n") else ""
-    summary = dict(result.get("summary", {}))
-    summary["local_domain_changed"] = local_changed
-    return "\n".join(lines) + suffix, summary
+    return "\n".join(lines) + suffix, dict(result.get("summary", {}))
