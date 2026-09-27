@@ -1,0 +1,16 @@
+{
+  "schema": "westside.subtitle-regression.v1",
+  "cases": [
+    {"category":"scripture","input":"今天我們讀以弗所書第一章。","must_keep":["以弗所書"]},
+    {"category":"scripture","input":"使徒行傳記載五旬節所發生的事。","must_keep":["使徒行傳","五旬節"]},
+    {"category":"names","input":"亞伯拉罕、以撒、雅各都在這段經文裡。","must_keep":["亞伯拉罕","以撒","雅各"]},
+    {"category":"names","input":"希伯來書提到麥基洗德。","must_keep":["希伯來書","麥基洗德"]},
+    {"category":"places","input":"耶穌從橄欖山往耶路撒冷去。","must_keep":["耶穌","橄欖山","耶路撒冷"]},
+    {"category":"theology","input":"我們因信稱義，也談成聖和救贖。","must_keep":["稱義","成聖","救贖"]},
+    {"category":"theology","input":"基督是我們的挽回祭，我們來到施恩座前。","must_keep":["基督","挽回祭","施恩座"]},
+    {"category":"church","input":"主日之後弟兄姊妹一起查經和團契。","must_keep":["主日","弟兄","姊妹","查經","團契"]},
+    {"category":"church","input":"牧師講道之後我們有聖餐和禱告。","must_keep":["牧師","講道","聖餐","禱告"]},
+    {"category":"ordinary","input":"今天下午可能會下雨，記得帶雨傘。","must_keep":["今天下午可能會下雨，記得帶雨傘。"],"must_not_change":true},
+    {"category":"ordinary","input":"這段話只是一般中文，不需要改寫。","must_keep":["這段話只是一般中文，不需要改寫。"],"must_not_change":true}
+  ]
+}
