@@ -12,7 +12,7 @@ import main as stable_main
 from main import APP_HOME, Worker, log
 from subtitle_style import profile_for_video
 
-stable_main.APP_VERSION = "1.1"
+stable_main.APP_VERSION = "1.2"
 
 _original_transcribe = Worker.transcribe
 _original_write_srt = Worker.write_srt
@@ -65,43 +65,28 @@ def _asr_audio_path(self) -> Path:
 
 
 def _transcribe_production(self, vpy: str, result_json: Path):
-    """Chinese uses contextual Paraformer in production; Whisper is fallback only."""
     if self.language in ("zh", "auto"):
         try:
             from asr.church_context import load_context_terms
             from dore_subtitle.context_retriever import CorpusTerm, retrieve_context
             from dore_subtitle.contextual_paraformer import transcribe_challenger
-
             scope = _active_memory_scope()
             memory_path = Path.home() / "Library" / "Application Support" / "Westside Stories" / "subtitle-memory.json"
             corpus = [CorpusTerm(text=term, evidence="bible/church corpus", weight=1.0) for term in load_context_terms(APP_HOME)]
-            context = retrieve_context(
-                scope=scope,
-                memory_path=memory_path,
-                corpus_terms=corpus,
-                query=os.environ.get("WESTSIDE_SERMON_CONTEXT", "").strip(),
-                limit=64,
-            )
+            context = retrieve_context(scope=scope, memory_path=memory_path, corpus_terms=corpus, query=os.environ.get("WESTSIDE_SERMON_CONTEXT", "").strip(), limit=64)
             asr_python = _ensure_contextual_asr_env(self)
             if asr_python:
                 self.status.emit("正在進行中文語境辨識…", "Running contextual Chinese ASR…")
                 self.progress.emit(30)
-                source = _asr_audio_path(self)
-                result = transcribe_challenger(asr_python, source, context=context)
+                result = transcribe_challenger(asr_python, _asr_audio_path(self), context=context)
                 segments = result.raw.get("segments") if result.ok else None
                 if result.ok and segments:
-                    result_json.write_text(json.dumps({
-                        "text": result.text,
-                        "segments": segments,
-                        "backend": "funasr-paraformer-zh-contextual",
-                        "context_terms": len(context),
-                    }, ensure_ascii=False), encoding="utf-8")
+                    result_json.write_text(json.dumps({"text": result.text, "segments": segments, "backend": "funasr-paraformer-zh-contextual", "context_terms": len(context)}, ensure_ascii=False), encoding="utf-8")
                     log(f"production contextual ASR completed; segments={len(segments)} chars={len(result.text)} context={len(context)} corpus={len(corpus)}")
                     return
                 log("production contextual ASR unavailable; falling back to Whisper: " + (result.error or "no timestamped segments"))
         except Exception as exc:
             log(f"production contextual ASR failure; falling back to Whisper: {type(exc).__name__}: {exc}")
-
     _original_transcribe(self, vpy, result_json)
 
 
@@ -122,7 +107,7 @@ def _probe_video_size(ffmpeg: str, video: Path) -> tuple[int | None, int | None]
 
 
 def _burn_with_style(self, ffmpeg: str, srt: Path, output: Path):
-    self.status.emit("正在燒錄字幕到影片…", "Burning subtitles into video…")
+    self.status.emit("正在使用 Mac 硬體快速燒錄字幕…", "Burning subtitles with Mac hardware acceleration…")
     self.progress.emit(75)
     tmp_path = None
     try:
@@ -134,12 +119,17 @@ def _burn_with_style(self, ffmpeg: str, srt: Path, output: Path):
         force_style = style.ass_force_style().replace("'", "\\'")
         subtitle_filter = "subtitles=filename='" + str(tmp_path).replace("'", "\\'") + "':force_style='" + force_style + "'"
         log(f"subtitle style: {width}x{height}; {style.ass_force_style()}")
-        cmd = [ffmpeg, "-y", "-i", str(self.video), "-vf", subtitle_filter, "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-c:a", "copy", str(output)]
+
+        # Subtitle rendering still happens in the filter graph, but final H.264 encoding
+        # is delegated to Apple's VideoToolbox hardware encoder instead of libx264 CPU.
+        cmd = [ffmpeg, "-y", "-i", str(self.video), "-vf", subtitle_filter,
+               "-c:v", "h264_videotoolbox", "-q:v", "65", "-allow_sw", "1",
+               "-c:a", "copy", "-movflags", "+faststart", str(output)]
         p = subprocess.run(cmd, text=True, capture_output=True, env=stable_main.os.environ.copy())
         log("ffmpeg stdout:\n" + (p.stdout or ""))
         log("ffmpeg stderr:\n" + (p.stderr or ""))
         if p.returncode != 0:
-            raise RuntimeError("FFmpeg 燒錄失敗。\nFFmpeg burn-in failed.\n\n請查看桌面 WestsideStories.log。")
+            raise RuntimeError("FFmpeg 硬體燒錄失敗。\nFFmpeg hardware burn-in failed.\n\n請查看桌面 WestsideStories.log。")
     finally:
         if tmp_path:
             try:
@@ -151,7 +141,6 @@ def _burn_with_style(self, ffmpeg: str, srt: Path, output: Path):
 Worker.transcribe = _transcribe_production
 Worker.write_srt = _write_srt_production
 Worker.burn = _burn_with_style
-
 
 if __name__ == "__main__":
     stable_main.main()
