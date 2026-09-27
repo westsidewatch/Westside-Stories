@@ -1,9 +1,9 @@
 """Westside Stories 1.1 production entrypoint.
 
-Keeps the stable main.py subtitle path intact while attaching Doré v2 as a
-fail-open, post-ASR shadow observer. Doré cannot block or mutate SRT output.
-Release-only wiring also applies the 1.1 version label and adaptive burn-in
-styles without changing the portable SRT itself.
+Restores the proven v1 Doré proofreading path as the release baseline, while
+keeping v1.1 shadow evidence, local learning infrastructure and adaptive burn-in
+styles. Proofreading is fail-open: a network/Doré failure keeps the Whisper SRT
+usable rather than failing the whole job.
 """
 from __future__ import annotations
 
@@ -16,15 +16,39 @@ import main as stable_main
 from main import APP_HOME, Worker, log
 from subtitle_style import profile_for_video
 
-# Release identity is owned by the 1.1 entrypoint so the stable 1.0 module can
-# remain untouched while every UI/log lookup observes the current version.
 stable_main.APP_VERSION = "1.1"
 
 _original_write_srt = Worker.write_srt
 
 
-def _write_srt_with_shadow(self, result_json, srt_path):
+def _write_srt_with_proofreading_and_shadow(self, result_json, srt_path):
+    # 1. Always produce the stable local Whisper SRT first.
     _original_write_srt(self, result_json, srt_path)
+
+    # 2. Restore the v1 proofreading capability that users already relied on.
+    #    Preserve the original SRT so every automatic correction is reversible.
+    original_text = srt_path.read_text(encoding="utf-8")
+    original_path = APP_HOME / "dore" / "last_result.whisper-original.srt"
+    try:
+        original_path.parent.mkdir(parents=True, exist_ok=True)
+        original_path.write_text(original_text, encoding="utf-8", newline="\n")
+    except Exception as exc:
+        log(f"original SRT archive skipped: {type(exc).__name__}: {exc}")
+
+    try:
+        from dore_proofreader import apply_dore_to_srt_text
+        corrected, summary = apply_dore_to_srt_text(original_text)
+        srt_path.write_text(corrected, encoding="utf-8", newline="\n")
+        log(
+            "Doré proofread restored: "
+            f"segments={summary.get('segments', 0)} "
+            f"changed={summary.get('changed', 0)}"
+        )
+    except Exception as exc:
+        # Doré must improve the product, never become a runtime dependency.
+        log(f"Doré proofread unavailable; kept Whisper SRT: {type(exc).__name__}: {exc}")
+
+    # 3. v1.1 evidence remains observational and cannot undo the proven output.
     try:
         from dore_subtitle.pipeline_bridge import run_shadow_pipeline
         report = run_shadow_pipeline(result_json, APP_HOME)
@@ -96,7 +120,7 @@ def _burn_with_style(self, ffmpeg: str, srt: Path, output: Path):
                 pass
 
 
-Worker.write_srt = _write_srt_with_shadow
+Worker.write_srt = _write_srt_with_proofreading_and_shadow
 Worker.burn = _burn_with_style
 
 
