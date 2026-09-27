@@ -30,6 +30,10 @@ echo "安裝 / 更新 PyInstaller 與 PySide6..."
 "$VPY" -m pip install --upgrade pip pyinstaller pyside6
 
 echo
+echo "驗證 1.1 release imports..."
+PYTHONPATH="app" "$VPY" -c "import main_v2, subtitle_style, dore_subtitle.pipeline_bridge, dore_subtitle.shadow_archive, dore_subtitle.suspicion_gate; print('release imports: ok')"
+
+echo
 echo "開始打包..."
 rm -rf build dist "Westside Stories.spec"
 
@@ -41,6 +45,7 @@ rm -rf build dist "Westside Stories.spec"
   --name "Westside Stories" \
   --add-data "app/assets:assets" \
   --paths "app" \
+  --hidden-import "subtitle_style" \
   --hidden-import "dore_subtitle.pipeline_bridge" \
   --hidden-import "dore_subtitle.shadow_archive" \
   --hidden-import "dore_subtitle.suspicion_gate" \
