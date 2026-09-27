@@ -11,11 +11,6 @@ _original_write_srt = Worker.write_srt
 
 
 def _transcribe_production(self, vpy: str, result_json: Path):
-    """Use the already-working stable recognizer for every language.
-
-    Chinese accuracy is improved downstream by Church Corrector. This avoids the
-    broken FunASR/PyTorch first-run dependency path entirely.
-    """
     return _original_transcribe(self, vpy, result_json)
 
 
@@ -48,7 +43,26 @@ def _burn_with_style(self, ffmpeg: str, srt: Path, output: Path):
             try: tmp_path.unlink(missing_ok=True)
             except Exception: pass
 
+
+def _safe_cleanup_thread(self):
+    """Do not drop the last Python reference while Qt is emitting QThread.finished."""
+    thread = self.thread
+    worker = self.worker
+    self.select_btn.setEnabled(True)
+    self.start_btn.setEnabled(True)
+    self.lang.setEnabled(True)
+    self.use_existing.setEnabled(True)
+    self.burn.setEnabled(True)
+    self.worker = None
+    if worker is not None:
+        worker.deleteLater()
+    if thread is not None:
+        thread.deleteLater()
+    # Keep self.thread referenced until Qt owns/deletes the stopped thread.
+
+
 Worker.transcribe=_transcribe_production
 Worker.write_srt=_write_srt_production
 Worker.burn=_burn_with_style
+stable_main.MainWindow.cleanup_thread=_safe_cleanup_thread
 if __name__=="__main__": stable_main.main()
