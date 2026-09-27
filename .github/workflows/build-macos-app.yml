@@ -1,0 +1,70 @@
+name: Build macOS App
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip pyinstaller pyside6
+
+      - name: Release imports
+        run: PYTHONPATH=app python -c "import main_v2, dore_proofreader, church_language_context, subtitle_style, dore_subtitle.local_context_adapter, dore_subtitle.local_memory, dore_subtitle.pipeline_bridge, dore_subtitle.shadow_archive, dore_subtitle.suspicion_gate; print('release imports: ok')"
+
+      - name: Church language gate
+        run: PYTHONPATH=app python tests/test_church_language_release_gate.py
+
+      - name: Doré output contract gate
+        run: PYTHONPATH=app python tests/test_dore_output_contract.py
+
+      - name: Regression corpus gate
+        run: PYTHONPATH=app python tests/test_regression_corpus.py
+
+      - name: Local context adapter gate
+        run: PYTHONPATH=app python tests/test_local_context_adapter.py
+
+      - name: Build Westside Stories.app
+        run: |
+          rm -rf build dist "Westside Stories.spec"
+          python -m PyInstaller \
+            --noconfirm --clean --windowed --onedir \
+            --name "Westside Stories" \
+            --add-data "app/assets:assets" \
+            --paths "app" \
+            --hidden-import "dore_proofreader" \
+            --hidden-import "church_language_context" \
+            --hidden-import "subtitle_style" \
+            --hidden-import "dore_subtitle.local_context_adapter" \
+            --hidden-import "dore_subtitle.local_memory" \
+            --hidden-import "dore_subtitle.pipeline_bridge" \
+            --hidden-import "dore_subtitle.shadow_archive" \
+            --hidden-import "dore_subtitle.suspicion_gate" \
+            "app/main_v2.py"
+
+      - name: Package app
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/Westside Stories.app" "Westside-Stories-macOS.zip"
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Westside-Stories-macOS
+          path: Westside-Stories-macOS.zip
+          if-no-files-found: error
+          retention-days: 30
