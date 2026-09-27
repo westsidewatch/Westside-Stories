@@ -2,16 +2,16 @@ name: Build macOS App
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
-
-permissions:
-  contents: read
+    branches:
+      - main
+  workflow_dispatch: {}
 
 jobs:
   build:
-    runs-on: macos-14
+    name: Gate and build macOS app
+    runs-on: macos-latest
     timeout-minutes: 30
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,8 +19,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: pip
+          python-version: "3.11"
 
       - name: Install build dependencies
         run: python -m pip install --upgrade pip pyinstaller pyside6
@@ -47,16 +46,16 @@ jobs:
             --noconfirm --clean --windowed --onedir \
             --name "Westside Stories" \
             --add-data "app/assets:assets" \
-            --paths "app" \
-            --hidden-import "dore_proofreader" \
-            --hidden-import "church_language_context" \
-            --hidden-import "subtitle_style" \
-            --hidden-import "dore_subtitle.local_context_adapter" \
-            --hidden-import "dore_subtitle.local_memory" \
-            --hidden-import "dore_subtitle.pipeline_bridge" \
-            --hidden-import "dore_subtitle.shadow_archive" \
-            --hidden-import "dore_subtitle.suspicion_gate" \
-            "app/main_v2.py"
+            --paths app \
+            --hidden-import dore_proofreader \
+            --hidden-import church_language_context \
+            --hidden-import subtitle_style \
+            --hidden-import dore_subtitle.local_context_adapter \
+            --hidden-import dore_subtitle.local_memory \
+            --hidden-import dore_subtitle.pipeline_bridge \
+            --hidden-import dore_subtitle.shadow_archive \
+            --hidden-import dore_subtitle.suspicion_gate \
+            app/main_v2.py
 
       - name: Package app
         run: ditto -c -k --sequesterRsrc --keepParent "dist/Westside Stories.app" "Westside-Stories-macOS.zip"
