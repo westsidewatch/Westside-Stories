@@ -24,6 +24,7 @@ rm -rf build dist "Westside Stories.spec"
   --noconfirm --clean --windowed --onedir \
   --name "Westside Stories" \
   --add-data "app/assets:assets" \
+  --add-data "app/context:context" \
   --paths "app" \
   --hidden-import "subtitle_style" \
   --hidden-import "asr.church_context" \
