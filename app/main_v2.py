@@ -7,6 +7,7 @@ usable rather than failing the whole job.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -19,6 +20,21 @@ from subtitle_style import profile_for_video
 stable_main.APP_VERSION = "1.1"
 
 _original_write_srt = Worker.write_srt
+
+
+def _active_memory_scope():
+    """Resolve optional local scope without making cloud/profile data mandatory.
+
+    Existing installs continue to work with an empty scope. Deployments that
+    know their local organisation/speaker/series can set these locally; the
+    values are used only to select on-device learned terms.
+    """
+    from dore_subtitle.local_memory import MemoryScope
+    return MemoryScope(
+        organisation=os.environ.get("WESTSIDE_ORGANISATION", "").strip(),
+        speaker=os.environ.get("WESTSIDE_SPEAKER", "").strip(),
+        series=os.environ.get("WESTSIDE_SERIES", "").strip(),
+    )
 
 
 def _write_srt_with_proofreading_and_shadow(self, result_json, srt_path):
@@ -37,7 +53,8 @@ def _write_srt_with_proofreading_and_shadow(self, result_json, srt_path):
 
     try:
         from dore_proofreader import apply_dore_to_srt_text
-        corrected, summary = apply_dore_to_srt_text(original_text)
+        scope = _active_memory_scope()
+        corrected, summary = apply_dore_to_srt_text(original_text, scope=scope)
         srt_path.write_text(corrected, encoding="utf-8", newline="\n")
         log(
             "Doré proofread restored: "
