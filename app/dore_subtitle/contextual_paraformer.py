@@ -1,9 +1,8 @@
 """Out-of-process Chinese contextual ASR using upstream FunASR.
 
-FunASR owns recognition, VAD, punctuation and contextual hotwords. The worker
-normalizes upstream sentence/timestamp output into the segment contract already
-used by Westside Stories, so it can be promoted directly to production without
-keeping model memory resident in the GUI process.
+The worker verifies that the resolved upstream model actually accepts contextual
+hotwords. Recognition failure is surfaced instead of being mistaken for a new
+engine success.
 """
 from __future__ import annotations
 
@@ -34,11 +33,12 @@ model = AutoModel(
     punc_model="ct-punc",
     disable_update=True,
 )
+resolved = type(getattr(model, "model", model)).__name__
 kwargs = {"input": audio, "batch_size_s": 300}
 if hotwords.strip():
     kwargs["hotword"] = hotwords
 result = model.generate(**kwargs)
-print(json.dumps({"ok": True, "result": result}, ensure_ascii=False))
+print(json.dumps({"ok": True, "result": result, "resolved_model": resolved, "hotword_chars": len(hotwords), "hotword_terms": len([x for x in hotwords.split(" ") if x])}, ensure_ascii=False))
 '''
 
 
@@ -54,7 +54,6 @@ def _extract_text(payload: dict) -> str:
 
 
 def _normalize_segments(payload: dict) -> list[dict]:
-    """Convert FunASR sentence/timestamp metadata to Westside SRT segments."""
     segments: list[dict] = []
     for item in _items(payload):
         sentence_info = item.get("sentence_info") or item.get("sentences") or []
@@ -65,11 +64,9 @@ def _normalize_segments(payload: dict) -> list[dict]:
             start = sentence.get("start")
             end = sentence.get("end")
             if text and start is not None and end is not None:
-                # FunASR sentence timestamps are milliseconds.
                 segments.append({"start": float(start) / 1000.0, "end": float(end) / 1000.0, "text": text})
         if sentence_info:
             continue
-
         stamps = item.get("timestamp") or []
         text = str(item.get("text") or "").strip()
         if text and stamps:
@@ -79,27 +76,14 @@ def _normalize_segments(payload: dict) -> list[dict]:
     return segments
 
 
-def transcribe_challenger(
-    python_executable: str,
-    audio: Path,
-    context: Iterable[DynamicTerm] = (),
-    timeout: int = 3600,
-) -> ChallengerResult:
-    """Run FunASR out-of-process; process exit releases model memory."""
+def transcribe_challenger(python_executable: str, audio: Path, context: Iterable[DynamicTerm] = (), timeout: int = 3600) -> ChallengerResult:
     hotwords = hotword_string(context)
     try:
-        proc = subprocess.run(
-            [python_executable, "-c", WORKER, str(audio), hotwords],
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-        )
+        proc = subprocess.run([python_executable, "-c", WORKER, str(audio), hotwords], text=True, capture_output=True, timeout=timeout)
     except Exception as exc:
         return ChallengerResult(False, "", {}, f"{type(exc).__name__}: {exc}")
-
     if proc.returncode != 0:
         return ChallengerResult(False, "", {}, (proc.stderr or proc.stdout or "ASR failed").strip())
-
     lines = [line for line in (proc.stdout or "").splitlines() if line.strip()]
     if not lines:
         return ChallengerResult(False, "", {}, "ASR returned no result")
@@ -107,7 +91,6 @@ def transcribe_challenger(
         payload = json.loads(lines[-1])
     except Exception as exc:
         return ChallengerResult(False, "", {}, f"invalid ASR output: {exc}")
-
     text = _extract_text(payload)
     segments = _normalize_segments(payload)
     payload["text"] = text
