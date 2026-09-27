@@ -28,8 +28,29 @@ VENV=".benchmark-real/venv"
 VPY="$VENV/bin/python"
 "$VPY" -m pip install -q --upgrade pip yt-dlp mlx-whisper funasr pypinyin
 
-"$VPY" -m yt_dlp -x --audio-format wav -o "$OUT/source.%(ext)s" "$URL"
+# Hosted CI IPs are frequently challenged by YouTube. Try current player clients
+# and a JS runtime before declaring URL ingestion unavailable. No full video is kept.
+YTDLP_COMMON=(
+  --no-playlist
+  --extract-audio
+  --audio-format wav
+  --audio-quality 0
+  --retries 3
+  --fragment-retries 3
+  -o "$OUT/source.%(ext)s"
+)
+
+rm -f "$OUT"/source.*
+if ! "$VPY" -m yt_dlp "${YTDLP_COMMON[@]}" --extractor-args "youtube:player_client=android_vr,web_safari" "$URL"; then
+  rm -f "$OUT"/source.*
+  if command -v node >/dev/null 2>&1; then
+    "$VPY" -m yt_dlp "${YTDLP_COMMON[@]}" --js-runtimes "node:$(command -v node)" --extractor-args "youtube:player_client=web,web_safari" "$URL"
+  else
+    "$VPY" -m yt_dlp "${YTDLP_COMMON[@]}" --extractor-args "youtube:player_client=web_safari" "$URL"
+  fi
+fi
 AUDIO="$OUT/source.wav"
+[ -s "$AUDIO" ] || { echo "audio ingestion failed: $AUDIO missing" >&2; exit 21; }
 
 PYTHONPATH="app" "$VPY" - "$AUDIO" "$OUT" "$VIDEO_ID" <<'PY'
 import json, sys
