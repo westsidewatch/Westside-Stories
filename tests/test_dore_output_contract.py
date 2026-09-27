@@ -22,12 +22,10 @@ SRT = """1
 """
 
 
-def fake_response(segments, endpoint=None, timeout=30):
+def fake_response(segments, endpoint=None, timeout=30, scope=None):
     rows = []
     for segment in segments:
         text = segment["text"]
-        # Simulate one high-confidence domain correction without encoding a
-        # production replacement rule in the app itself.
         if "呼召" in text:
             corrected = text.replace("呼召", "蒙召")
             rows.append({"id": segment["id"], "changed": True, "corrected": corrected})
