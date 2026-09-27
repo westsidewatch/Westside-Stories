@@ -18,11 +18,13 @@ build = (ROOT / "build_app.command").read_text(encoding="utf-8")
 for name, source in (("main_v2", main_v2), ("adapter", adapter), ("context", context)):
     ast.parse(source, filename=name)
 
-# Production routing gate: contextual Chinese ASR must be primary and Whisper fallback only.
-require('if self.language in ("zh", "auto")' in main_v2, "Chinese/auto production routing missing")
+# Production routing gate: non-Chinese delegates to stable ASR; Chinese/auto continues
+# through contextual Paraformer. Test behavior rather than brittle quote formatting.
+require("self.language not in" in main_v2 and '"zh"' in main_v2 and '"auto"' in main_v2,
+        "Chinese/auto production routing missing")
 require("transcribe_challenger" in main_v2, "contextual Paraformer not called by production")
 require("result_json.write_text" in main_v2 and '"segments": segments' in main_v2, "Paraformer segments do not reach production result")
-require("_original_transcribe(self, vpy, result_json)" in main_v2, "safe fallback missing")
+require("_original_transcribe(self, vpy, result_json)" in main_v2, "non-Chinese stable ASR delegation missing")
 
 # Mature upstream stack gate.
 for token in ('model="paraformer-zh"', 'vad_model="fsmn-vad"', 'punc_model="ct-punc"'):
@@ -33,6 +35,11 @@ require('kwargs["hotword"] = hotword' in adapter, "context is not passed into up
 require('glob("*.txt")' in context, "expandable context corpus discovery missing")
 require("load_context_terms" in main_v2, "production does not load context corpus")
 require("corpus_terms=corpus" in main_v2, "corpus does not reach context retrieval")
+
+# Church Corrector release gate.
+require("church_corrector" in build, "Church Corrector is not packaged")
+require("test_church_corrector.py" in build, "Church Corrector first-use gate is not run")
+require("rapidfuzz" in build and "pypinyin" in build, "Church Corrector fuzzy dependencies are not installed")
 
 # Packaging gate.
 require("Westside Stories 1.2" in build, "build is not marked 1.2")
