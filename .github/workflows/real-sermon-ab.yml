@@ -5,6 +5,9 @@ on:
   push:
     paths:
       - '.github/workflows/real-sermon-ab.yml'
+      - 'tools/benchmark_youtube.command'
+      - 'app/asr/**'
+      - 'app/dore_subtitle/**'
 
 jobs:
   benchmark:
